@@ -6,7 +6,7 @@ GST_DEBUG_CATEGORY_STATIC(gst_brightness_debug);
 
 enum { PROP_0, PROP_BRIGHTNESS };
 
-#define DEFAULT_BRIGHTNESS 1 //0.0
+#define DEFAULT_BRIGHTNESS 0.0
 
 /* Pad templates */
 static GstStaticPadTemplate sink_template = 
