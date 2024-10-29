@@ -30,57 +30,91 @@ static void gst_brightness_get_property(GObject *object, guint prop_id, GValue *
 static GstFlowReturn gst_brightness_transform_frame_ip(GstVideoFilter *filter, GstVideoFrame *frame);
 
 
+static gboolean gst_brightness_is_passthrough (GstBrightness * brightness)
+{
+  return FALSE;
+}
+
 // /* get notified of caps and plug in the correct process function */
-// static gboolean gst_brightness_set_info (GstVideoFilter * vfilter, GstCaps * incaps, GstVideoInfo * in_info, GstCaps * outcaps, GstVideoInfo * out_info)
+static gboolean gst_brightness_set_info (GstVideoFilter * vfilter, GstCaps * incaps, GstVideoInfo * in_info, GstCaps * outcaps, GstVideoInfo * out_info)
+{
+  GstBrightness *brightness = GST_BRIGHTNESS (vfilter);
+
+  GST_DEBUG_OBJECT (brightness,"in %" GST_PTR_FORMAT " out %" GST_PTR_FORMAT, incaps, outcaps);
+
+  switch (GST_VIDEO_INFO_FORMAT (in_info)) {
+    case GST_VIDEO_FORMAT_ARGB:
+    case GST_VIDEO_FORMAT_ABGR:
+    case GST_VIDEO_FORMAT_RGBA:
+    case GST_VIDEO_FORMAT_BGRA:
+    case GST_VIDEO_FORMAT_xRGB:
+    case GST_VIDEO_FORMAT_xBGR:
+    case GST_VIDEO_FORMAT_RGBx:
+    case GST_VIDEO_FORMAT_BGRx:
+    case GST_VIDEO_FORMAT_RGB:
+    case GST_VIDEO_FORMAT_BGR:
+      break;
+    default:
+      if (!gst_brightness_is_passthrough (brightness))
+        goto unknown_format;
+      break;
+  }
+
+  return TRUE;
+
+  /* ERRORS */
+unknown_format:
+  {
+    GST_ERROR_OBJECT (brightness, "unknown format %" GST_PTR_FORMAT, incaps);
+    return FALSE;
+  }
+}
+
+
+
+static void gst_brightness_before_transform (GstBaseTransform * base, GstBuffer * buf)
+{
+  GstBrightness *filter = GST_BRIGHTNESS (base);
+  GstClockTime timestamp, stream_time;
+
+  timestamp = GST_BUFFER_TIMESTAMP (buf);
+  stream_time = gst_segment_to_stream_time (&base->segment, GST_FORMAT_TIME, timestamp);
+
+  GST_DEBUG_OBJECT (filter, "sync to %" GST_TIME_FORMAT, GST_TIME_ARGS (timestamp));
+
+  if (GST_CLOCK_TIME_IS_VALID (stream_time))
+    gst_object_sync_values (GST_OBJECT (filter), stream_time);
+}
+
+
+
+
+// static GstCaps *gst_brightness_transform_caps (GstBaseTransform * trans,
+//     GstPadDirection direction, GstCaps * caps, GstCaps * filter)
 // {
-//   GstBrightness *videobalance = GST_BRIGHTNESS (vfilter);
+//   GstBrightness *brightness = GST_VIDEO_BALANCE (trans);
+//   GstCaps *ret;
 
-//   GST_DEBUG_OBJECT (videobalance,
-//       "in %" GST_PTR_FORMAT " out %" GST_PTR_FORMAT, incaps, outcaps);
+//   if (!gst_brightness_is_passthrough (brightness)) {
+//     static GstStaticCaps raw_caps = GST_STATIC_CAPS (GST_VIDEO_CAPS_MAKE (PROCESSING_CAPS));
 
-//   switch (GST_VIDEO_INFO_FORMAT (in_info)) {
-//     case GST_VIDEO_FORMAT_ARGB:
-//     case GST_VIDEO_FORMAT_ABGR:
-//     case GST_VIDEO_FORMAT_RGBA:
-//     case GST_VIDEO_FORMAT_BGRA:
-//     case GST_VIDEO_FORMAT_xRGB:
-//     case GST_VIDEO_FORMAT_xBGR:
-//     case GST_VIDEO_FORMAT_RGBx:
-//     case GST_VIDEO_FORMAT_BGRx:
-//     case GST_VIDEO_FORMAT_RGB:
-//     case GST_VIDEO_FORMAT_BGR:
-//       break;
-//     default:
-//       if (!gst_video_balance_is_passthrough (videobalance))
-//         goto unknown_format;
-//       break;
+//     caps = gst_caps_intersect (caps, gst_static_caps_get (&raw_caps));
+
+//     if (filter) {
+//       ret = gst_caps_intersect_full (filter, caps, GST_CAPS_INTERSECT_FIRST);
+//       gst_caps_unref (caps);
+//     } else {
+//       ret = caps;
+//     }
+//   } else {
+//     if (filter) {
+//       ret = gst_caps_intersect_full (filter, caps, GST_CAPS_INTERSECT_FIRST);
+//     } else {
+//       ret = gst_caps_ref (caps);
+//     }
 //   }
 
-//   return TRUE;
-
-//   /* ERRORS */
-// unknown_format:
-//   {
-//     GST_ERROR_OBJECT (videobalance, "unknown format %" GST_PTR_FORMAT, incaps);
-//     return FALSE;
-//   }
-// }
-
-
-
-// static void gst_brightness_before_transform (GstBaseTransform * base, GstBuffer * buf)
-// {
-//   GstBrightness *filter = GST_BRIGHTNESS (base);
-//   GstClockTime timestamp, stream_time;
-
-//   timestamp = GST_BUFFER_TIMESTAMP (buf);
-//   stream_time =
-//       gst_segment_to_stream_time (&base->segment, GST_FORMAT_TIME, timestamp);
-
-//   GST_DEBUG_OBJECT (filter, "sync to %" GST_TIME_FORMAT, GST_TIME_ARGS (timestamp));
-
-//   if (GST_CLOCK_TIME_IS_VALID (stream_time))
-//     gst_object_sync_values (GST_OBJECT (filter), stream_time);
+//   return ret;
 // }
 
 
@@ -104,17 +138,18 @@ static void gst_brightness_class_init(GstBrightnessClass *klass) {
     "Filters video", /* FIXME: short description*/
     "Name <amiyamaity23@gmail.com>"); /* FIXME: author */
 
-    // trans_class->before_transform = GST_DEBUG_FUNCPTR (gst_brightness_before_transform);
-    trans_class->transform_ip_on_passthrough = FALSE;
+    // Add pad templates to the element class
+    gst_element_class_add_pad_template(GST_ELEMENT_CLASS(klass), gst_static_pad_template_get(&sink_template));
+    gst_element_class_add_pad_template(GST_ELEMENT_CLASS(klass), gst_static_pad_template_get(&src_template));
 
-    // video_filter_class->set_info = GST_DEBUG_FUNCPTR (gst_brightness_set_info);
+
+    trans_class->before_transform = GST_DEBUG_FUNCPTR (gst_brightness_before_transform);
+    trans_class->transform_ip_on_passthrough = FALSE;
+    // trans_class->transform_caps = GST_DEBUG_FUNCPTR (gst_brightness_transform_caps);
+
+    video_filter_class->set_info = GST_DEBUG_FUNCPTR (gst_brightness_set_info);
     video_filter_class->transform_frame_ip = GST_DEBUG_FUNCPTR(gst_brightness_transform_frame_ip);
 
-    // Add pad templates to the element class
-    gst_element_class_add_pad_template(GST_ELEMENT_CLASS(klass),
-        gst_static_pad_template_get(&sink_template));
-    gst_element_class_add_pad_template(GST_ELEMENT_CLASS(klass),
-        gst_static_pad_template_get(&src_template));
 
     // GST_DEBUG_CATEGORY_INIT (gst_brightness_debug, "brightness", 0, "Template brightness");
 
@@ -153,13 +188,17 @@ static void gst_brightness_get_property(GObject *object, guint prop_id, GValue *
 /* Frame transformation function */
 static GstFlowReturn gst_brightness_transform_frame_ip(GstVideoFilter *filter, GstVideoFrame *frame) {
     GstBrightness *brightness = GST_BRIGHTNESS(filter);
-    guint8 *data = GST_VIDEO_FRAME_PLANE_DATA(frame, 0);
-    gsize size = GST_VIDEO_FRAME_COMP_PSTRIDE(frame, 0) * GST_VIDEO_FRAME_HEIGHT(frame);
 
-    printf("frame received:%f\n", brightness->brightness);
-    for (gsize i = 0; i < size; i++) {
-        gint pixel = data[i] + (gint)(brightness->brightness * 255.0);
-        data[i] = 0; //CLAMP(pixel, 0, 255);
+    // Access the frame data
+    guint8 *data = GST_VIDEO_FRAME_PLANE_DATA(frame, 0);
+    gint width = GST_VIDEO_FRAME_WIDTH(frame);
+    gint height = GST_VIDEO_FRAME_HEIGHT(frame);
+
+    printf("frame received:%f, width:%d, height:%d\n", brightness->brightness, width, height);
+
+    // Process the frame data in-place to adjust brightness
+    for (gint i = 0; i < width * height * 3; i++) { // Assuming RGB format
+        data[i] = CLAMP(data[i] + brightness->brightness * 255, 0, 255);
     }
 
     return GST_FLOW_OK;

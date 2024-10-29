@@ -9,6 +9,6 @@
 
 `export GST_PLUGIN_PATH=$PWD`
 
-`gst-launch-1.0 filesrc location=sample-15s.mp4 ! decodebin ! videoconvert ! video/x-raw,format=RGB ! brightness brightness=1.0 ! videoconvert ! vp8enc ! webmmux ! filesink location=capture1.webm`
+`gst-launch-1.0 filesrc location=sample-15s.mp4 ! decodebin ! videoconvert ! video/x-raw,format=RGB ! brightness brightness=0.5 ! videoconvert ! vp8enc ! webmmux ! filesink location=capture1.webm`
 
 
